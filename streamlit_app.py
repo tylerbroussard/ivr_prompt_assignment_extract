@@ -42,8 +42,8 @@ def main():
 
     # File uploader
     uploaded_files = st.file_uploader(
-        "Upload Five9 IVR files", 
-        type=['five9ivr'], 
+        "Upload Five9 IVR or XML files", 
+        type=['five9ivr', 'xml'], 
         accept_multiple_files=True,
         help="You can upload multiple XML files at once"
     )

@@ -10,6 +10,18 @@ def extract_prompts(xml_content):
     root = ET.fromstring(xml_content)
     prompts_list = []
     
+    # Process announcements
+    announcement_prompts = {}
+    for announcement in root.findall('.//announcements'):
+        enabled = announcement.find('enabled')
+        prompt = announcement.find('prompt')
+        if prompt is not None and enabled is not None:
+            prompt_id = prompt.find('id')
+            if prompt_id is not None:
+                announcement_prompts[prompt_id.text] = {
+                    'enabled': enabled.text.lower() == 'true'
+                }
+
     # Iterate through each module
     for module in root.findall('.//modules/*'):
         module_name = module.find('moduleName')
@@ -20,10 +32,13 @@ def extract_prompts(xml_content):
                 prompt_id = prompt_data.find('id')
                 prompt_name = prompt_data.find('name')
                 if prompt_id is not None and prompt_name is not None:
+                    # Check if this prompt has announcement settings
+                    enabled = announcement_prompts.get(prompt_id.text, {}).get('enabled', 'N/A')
                     prompts_list.append({
                         'ID': prompt_id.text,
                         'Name': prompt_name.text,
-                        'Module': module_name
+                        'Module': module_name,
+                        'Enabled': enabled
                     })
     
     # Sort by name
@@ -79,9 +94,15 @@ def main():
                     
                     # Display results for this file
                     st.dataframe(
-                        df[['Name', 'ID', 'Module']],
+                        df[['Name', 'ID', 'Module', 'Enabled']],
                         hide_index=True,
-                        use_container_width=True
+                        use_container_width=True,
+                        column_config={
+                            "Name": st.column_config.TextColumn("Name", width="medium"),
+                            "ID": st.column_config.TextColumn("ID", width="small"),
+                            "Module": st.column_config.TextColumn("Module", width="medium"),
+                            "Enabled": st.column_config.BooleanColumn("Enabled", width="small")
+                        }
                     )
                     
                     # Show prompt count
@@ -123,9 +144,16 @@ def main():
                 duplicates = combined_df[combined_df.duplicated(subset=['ID'], keep=False)]
                 if not duplicates.empty:
                     st.dataframe(
-                        duplicates.sort_values('ID')[['Name', 'ID', 'Module', 'Source File']],
+                        duplicates.sort_values('ID')[['Name', 'ID', 'Module', 'Enabled', 'Source File']],
                         hide_index=True,
-                        use_container_width=True
+                        use_container_width=True,
+                        column_config={
+                            "Name": st.column_config.TextColumn("Name", width="medium"),
+                            "ID": st.column_config.TextColumn("ID", width="small"),
+                            "Module": st.column_config.TextColumn("Module", width="medium"),
+                            "Enabled": st.column_config.BooleanColumn("Enabled", width="small"),
+                            "Source File": st.column_config.TextColumn("Source File", width="medium")
+                        }
                     )
                     st.warning(f"Found {len(duplicates)//2} duplicate prompt IDs across files")
                 else:

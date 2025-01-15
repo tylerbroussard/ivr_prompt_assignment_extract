@@ -8,43 +8,27 @@ import base64
 def extract_prompts(xml_content):
     """Extract prompts from XML content."""
     root = ET.fromstring(xml_content)
-    prompts = {}
-    
-    # Debug counter
-    st.write("Starting XML analysis...")
-    module_count = 0
-    prompt_count = 0
+    prompts_list = []
     
     # Iterate through each module
     for module in root.findall('.//modules/*'):
-        module_count += 1
         module_name = module.find('moduleName')
         if module_name is not None:
             module_name = module_name.text
             # Look for prompts in filePrompt/promptData/prompt
             for prompt_data in module.findall('.//filePrompt/promptData/prompt'):
-                prompt_count += 1
                 prompt_id = prompt_data.find('id')
                 prompt_name = prompt_data.find('name')
                 if prompt_id is not None and prompt_name is not None:
-                    key = f"{prompt_id.text}"
-                    prompts[key] = {
+                    prompts_list.append({
                         'ID': prompt_id.text,
                         'Name': prompt_name.text,
                         'Module': module_name
-                    }
-                    st.write(f"Found prompt: ID={prompt_id.text}, Name={prompt_name.text}, Module={module_name}")
+                    })
     
-    st.write(f"Processed {module_count} modules and found {prompt_count} prompts")
-    
-    # Convert to list of unique prompts
-    unique_prompts = list(prompts.values())
     # Sort by name
-    unique_prompts.sort(key=lambda x: x['Name'])
-    
-    return unique_prompts
-
-
+    prompts_list.sort(key=lambda x: x['Name'])
+    return prompts_list
 
 def get_download_link(df, filename, text):
     """Generate a download link for the dataframe."""
@@ -84,7 +68,7 @@ def main():
                 prompts = extract_prompts(content)
                 
                 if prompts:
-                    # Create DataFrame for this file
+                    # Create DataFrame
                     df = pd.DataFrame(prompts)
                     
                     # Add filename column
@@ -95,7 +79,7 @@ def main():
                     
                     # Display results for this file
                     st.dataframe(
-                        df[['Name', 'ID']],
+                        df[['Name', 'ID', 'Module']],
                         hide_index=True,
                         use_container_width=True
                     )
@@ -139,7 +123,7 @@ def main():
                 duplicates = combined_df[combined_df.duplicated(subset=['ID'], keep=False)]
                 if not duplicates.empty:
                     st.dataframe(
-                        duplicates.sort_values('ID'),
+                        duplicates.sort_values('ID')[['Name', 'ID', 'Module', 'Source File']],
                         hide_index=True,
                         use_container_width=True
                     )

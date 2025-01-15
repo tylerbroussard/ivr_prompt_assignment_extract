@@ -25,6 +25,21 @@ def extract_prompts(xml_content):
     # Iterate through each module
     for module in root.findall('.//modules/*'):
         module_name = module.find('moduleName')
+        
+        # Check if module is disconnected
+        is_disconnected = False
+        module_id = None
+        if module.find('moduleId') is not None:
+            module_id = module.find('moduleId').text
+            # If all connection IDs are the same as the module ID, it's disconnected
+            all_connections = []
+            for tag in ['ascendants', 'exceptionalDescendant', 'singleDescendant']:
+                connections = module.findall(f'./{tag}')
+                all_connections.extend([conn.text for conn in connections])
+            
+            if all_connections and all(conn == module_id for conn in all_connections):
+                is_disconnected = True
+        
         if module_name is not None:
             module_name = module_name.text
             
@@ -43,11 +58,15 @@ def extract_prompts(xml_content):
                     prompt_name = prompt_elem.find('name')
                     if prompt_id is not None and prompt_name is not None:
                         # Check if this prompt has announcement settings
-                        enabled = announcement_prompts.get(prompt_id.text, {}).get('enabled', 'N/A')
+                        enabled = announcement_prompts.get(prompt_id.text, {}).get('enabled', None)
+                        # If not an announcement prompt, mark as In Use/Not In Use
+                        if enabled is None:
+                            enabled = not is_disconnected
                         prompts_list.append({
                             'ID': prompt_id.text,
                             'Name': prompt_name.text,
                             'Module': module_name,
+                            'Type': 'Announcement' if prompt_id.text in announcement_prompts else 'Play',
                             'Enabled': enabled
                         })
     
@@ -109,18 +128,25 @@ def main():
                     all_results.append(df)
                     
                     # Display results for this file
-                    # Convert boolean/N/A to readable format
-                    df['Enabled'] = df['Enabled'].map({True: '✅', False: '❌', 'N/A': '—'})
+                    # Convert boolean to readable format
+                    df['Status'] = df.apply(lambda x: 
+                        '✅ Enabled' if x['Enabled'] and x['Type'] == 'Announcement' 
+                        else '❌ Disabled' if not x['Enabled'] and x['Type'] == 'Announcement'
+                        else '✅ In Use' if x['Enabled'] and x['Type'] == 'Play'
+                        else '❌ Not In Use',
+                        axis=1
+                    )
                     
                     st.dataframe(
-                        df[['Name', 'ID', 'Module', 'Enabled']],
+                        df[['Name', 'ID', 'Module', 'Type', 'Status']],
                         hide_index=True,
                         use_container_width=True,
                         column_config={
                             "Name": st.column_config.TextColumn("Name", width="medium"),
                             "ID": st.column_config.TextColumn("ID", width="small"),
                             "Module": st.column_config.TextColumn("Module", width="medium"),
-                            "Enabled": st.column_config.TextColumn("Enabled", width="small")
+                            "Type": st.column_config.TextColumn("Type", width="small"),
+                            "Status": st.column_config.TextColumn("Status", width="small")
                         }
                     )
                     

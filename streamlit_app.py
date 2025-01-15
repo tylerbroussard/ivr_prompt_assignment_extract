@@ -10,37 +10,31 @@ def extract_prompts(xml_content):
     root = ET.fromstring(xml_content)
     prompts = {}
     
-    # Iterate through each module
-    for module in root.findall('.//modules/*'):
-        module_name = module.find('moduleName')
+    def process_module(module_elem):
+        """Helper function to process a module element"""
+        module_name = module_elem.find('moduleName')
+        module_id = module_elem.find('moduleId')
+        
         if module_name is not None:
             module_name = module_name.text
-            
-            # Look for prompts in filePrompt/promptData/prompt
-            for prompt_elem in module.findall('.//filePrompt/promptData/prompt'):
-                prompt_id = prompt_elem.find('id')
-                prompt_name = prompt_elem.find('name')
-                if prompt_id is not None and prompt_name is not None:
-                    prompt_key = f"{prompt_id.text}_{module_name}"  # Use composite key to handle same ID in different modules
-                    prompts[prompt_key] = {
-                        'ID': prompt_id.text,
-                        'Name': prompt_name.text,
-                        'Module': module_name
-                    }
-            
-            # Also check for prompts in any other locations using the same structure
-            for prompt_data in module.findall('.//promptData'):
-                prompt = prompt_data.find('prompt')
-                if prompt is not None:
-                    prompt_id = prompt.find('id')
-                    prompt_name = prompt.find('name')
-                    if prompt_id is not None and prompt_name is not None:
-                        prompt_key = f"{prompt_id.text}_{module_name}"
-                        prompts[prompt_key] = {
-                            'ID': prompt_id.text,
-                            'Name': prompt_name.text,
-                            'Module': module_name
-                        }
+            # Look for prompts in this module
+            for prompt_data in module_elem.findall('.//promptData'):
+                if prompt_data is not None:
+                    prompt = prompt_data.find('prompt')
+                    if prompt is not None:
+                        prompt_id = prompt.find('id')
+                        prompt_name = prompt.find('name')
+                        if prompt_id is not None and prompt_name is not None:
+                            key = f"{prompt_id.text}_{module_name}"
+                            prompts[key] = {
+                                'ID': prompt_id.text,
+                                'Name': prompt_name.text,
+                                'Module': module_name
+                            }
+    
+    # Process all modules
+    for module in root.findall('.//modules/*'):
+        process_module(module)
     
     # Convert to list of unique prompts
     unique_prompts = list(prompts.values())

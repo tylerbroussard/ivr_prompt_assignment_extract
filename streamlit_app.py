@@ -7,16 +7,25 @@ import base64
 
 def extract_prompts(xml_content):
     """Extract prompts from XML content."""
-    # Use regex to find all prompt elements with id and name
-    prompt_regex = r'<prompt>\s*<id>(\d+)</id>\s*<name>([^<]+)</name>'
+    # Parse XML content
+    root = ET.fromstring(xml_content)
     prompts = {}
     
-    for match in re.finditer(prompt_regex, xml_content):
-        prompt_id, name = match.groups()
-        prompts[prompt_id] = {
-            'ID': prompt_id,
-            'Name': name
-        }
+    # Find all prompt elements
+    for module in root.findall('.//module'):
+        module_name = module.find('moduleName')
+        if module_name is not None:
+            module_name = module_name.text
+            prompt = module.find('.//prompt/filePrompt/promptData/prompt')
+            if prompt is not None:
+                prompt_id = prompt.find('id')
+                prompt_name = prompt.find('name')
+                if prompt_id is not None and prompt_name is not None:
+                    prompts[prompt_id.text] = {
+                        'ID': prompt_id.text,
+                        'Name': prompt_name.text,
+                        'Module': module_name
+                    }
     
     # Convert to list of unique prompts
     unique_prompts = list(prompts.values())

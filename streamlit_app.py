@@ -7,25 +7,40 @@ import base64
 
 def extract_prompts(xml_content):
     """Extract prompts from XML content."""
-    # Parse XML content
     root = ET.fromstring(xml_content)
     prompts = {}
     
-    # Find all prompt elements
-    for module in root.findall('.//module'):
+    # Iterate through each module
+    for module in root.findall('.//modules/*'):
         module_name = module.find('moduleName')
         if module_name is not None:
             module_name = module_name.text
-            prompt = module.find('.//prompt/filePrompt/promptData/prompt')
-            if prompt is not None:
-                prompt_id = prompt.find('id')
-                prompt_name = prompt.find('name')
+            
+            # Look for prompts in filePrompt/promptData/prompt
+            for prompt_elem in module.findall('.//filePrompt/promptData/prompt'):
+                prompt_id = prompt_elem.find('id')
+                prompt_name = prompt_elem.find('name')
                 if prompt_id is not None and prompt_name is not None:
-                    prompts[prompt_id.text] = {
+                    prompt_key = f"{prompt_id.text}_{module_name}"  # Use composite key to handle same ID in different modules
+                    prompts[prompt_key] = {
                         'ID': prompt_id.text,
                         'Name': prompt_name.text,
                         'Module': module_name
                     }
+            
+            # Also check for prompts in any other locations using the same structure
+            for prompt_data in module.findall('.//promptData'):
+                prompt = prompt_data.find('prompt')
+                if prompt is not None:
+                    prompt_id = prompt.find('id')
+                    prompt_name = prompt.find('name')
+                    if prompt_id is not None and prompt_name is not None:
+                        prompt_key = f"{prompt_id.text}_{module_name}"
+                        prompts[prompt_key] = {
+                            'ID': prompt_id.text,
+                            'Name': prompt_name.text,
+                            'Module': module_name
+                        }
     
     # Convert to list of unique prompts
     unique_prompts = list(prompts.values())

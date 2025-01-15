@@ -10,7 +10,7 @@ def extract_prompts(xml_content):
     root = ET.fromstring(xml_content)
     prompts_list = []
     
-    # Process announcements
+    # First, find all announcement prompts and their enabled status
     announcement_prompts = {}
     for announcement in root.findall('.//announcements'):
         enabled = announcement.find('enabled')
@@ -21,29 +21,45 @@ def extract_prompts(xml_content):
                 announcement_prompts[prompt_id.text] = {
                     'enabled': enabled.text.lower() == 'true'
                 }
-
+    
     # Iterate through each module
     for module in root.findall('.//modules/*'):
         module_name = module.find('moduleName')
         if module_name is not None:
             module_name = module_name.text
-            # Look for prompts in filePrompt/promptData/prompt
-            for prompt_data in module.findall('.//filePrompt/promptData/prompt'):
-                prompt_id = prompt_data.find('id')
-                prompt_name = prompt_data.find('name')
-                if prompt_id is not None and prompt_name is not None:
-                    # Check if this prompt has announcement settings
-                    enabled = announcement_prompts.get(prompt_id.text, {}).get('enabled', 'N/A')
-                    prompts_list.append({
-                        'ID': prompt_id.text,
-                        'Name': prompt_name.text,
-                        'Module': module_name,
-                        'Enabled': enabled
-                    })
+            
+            # Find prompts in different possible locations
+            prompt_locations = [
+                './/filePrompt/promptData/prompt',
+                './/announcements/prompt',
+                './/prompt/filePrompt/promptData/prompt',
+                './/compoundPrompt/filePrompt/promptData/prompt',
+                './/promptData/prompt'
+            ]
+            
+            for location in prompt_locations:
+                for prompt_elem in module.findall(location):
+                    prompt_id = prompt_elem.find('id')
+                    prompt_name = prompt_elem.find('name')
+                    if prompt_id is not None and prompt_name is not None:
+                        # Check if this prompt has announcement settings
+                        enabled = announcement_prompts.get(prompt_id.text, {}).get('enabled', 'N/A')
+                        prompts_list.append({
+                            'ID': prompt_id.text,
+                            'Name': prompt_name.text,
+                            'Module': module_name,
+                            'Enabled': enabled
+                        })
     
-    # Sort by name
-    prompts_list.sort(key=lambda x: x['Name'])
-    return prompts_list
+    # Sort by name and remove duplicates based on ID
+    unique_prompts = []
+    seen_ids = set()
+    for prompt in sorted(prompts_list, key=lambda x: x['Name']):
+        if prompt['ID'] not in seen_ids:
+            unique_prompts.append(prompt)
+            seen_ids.add(prompt['ID'])
+            
+    return unique_prompts
 
 def get_download_link(df, filename, text):
     """Generate a download link for the dataframe."""

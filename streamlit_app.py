@@ -10,31 +10,32 @@ def extract_prompts(xml_content):
     root = ET.fromstring(xml_content)
     prompts = {}
     
-    def process_module(module_elem):
-        """Helper function to process a module element"""
-        module_name = module_elem.find('moduleName')
-        module_id = module_elem.find('moduleId')
-        
+    # Debug counter
+    st.write("Starting XML analysis...")
+    module_count = 0
+    prompt_count = 0
+    
+    # Iterate through each module
+    for module in root.findall('.//modules/*'):
+        module_count += 1
+        module_name = module.find('moduleName')
         if module_name is not None:
             module_name = module_name.text
-            # Look for prompts in this module
-            for prompt_data in module_elem.findall('.//promptData'):
-                if prompt_data is not None:
-                    prompt = prompt_data.find('prompt')
-                    if prompt is not None:
-                        prompt_id = prompt.find('id')
-                        prompt_name = prompt.find('name')
-                        if prompt_id is not None and prompt_name is not None:
-                            key = f"{prompt_id.text}_{module_name}"
-                            prompts[key] = {
-                                'ID': prompt_id.text,
-                                'Name': prompt_name.text,
-                                'Module': module_name
-                            }
+            # Look for prompts in filePrompt/promptData/prompt
+            for prompt_data in module.findall('.//filePrompt/promptData/prompt'):
+                prompt_count += 1
+                prompt_id = prompt_data.find('id')
+                prompt_name = prompt_data.find('name')
+                if prompt_id is not None and prompt_name is not None:
+                    key = f"{prompt_id.text}"
+                    prompts[key] = {
+                        'ID': prompt_id.text,
+                        'Name': prompt_name.text,
+                        'Module': module_name
+                    }
+                    st.write(f"Found prompt: ID={prompt_id.text}, Name={prompt_name.text}, Module={module_name}")
     
-    # Process all modules
-    for module in root.findall('.//modules/*'):
-        process_module(module)
+    st.write(f"Processed {module_count} modules and found {prompt_count} prompts")
     
     # Convert to list of unique prompts
     unique_prompts = list(prompts.values())
@@ -42,6 +43,8 @@ def extract_prompts(xml_content):
     unique_prompts.sort(key=lambda x: x['Name'])
     
     return unique_prompts
+
+
 
 def get_download_link(df, filename, text):
     """Generate a download link for the dataframe."""

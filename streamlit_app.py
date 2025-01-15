@@ -93,6 +93,9 @@ def main():
                     all_results.append(df)
                     
                     # Display results for this file
+                    # Convert boolean/N/A to readable format
+                    df['Enabled'] = df['Enabled'].map({True: '✅', False: '❌', 'N/A': '—'})
+                    
                     st.dataframe(
                         df[['Name', 'ID', 'Module', 'Enabled']],
                         hide_index=True,
@@ -101,7 +104,7 @@ def main():
                             "Name": st.column_config.TextColumn("Name", width="medium"),
                             "ID": st.column_config.TextColumn("ID", width="small"),
                             "Module": st.column_config.TextColumn("Module", width="medium"),
-                            "Enabled": st.column_config.BooleanColumn("Enabled", width="small")
+                            "Enabled": st.column_config.TextColumn("Enabled", width="small")
                         }
                     )
                     
@@ -143,6 +146,9 @@ def main():
                 # Find duplicates based on ID
                 duplicates = combined_df[combined_df.duplicated(subset=['ID'], keep=False)]
                 if not duplicates.empty:
+                    # Convert boolean/N/A to readable format for duplicates display
+                    duplicates['Enabled'] = duplicates['Enabled'].map({True: '✅', False: '❌', 'N/A': '—'})
+                    
                     st.dataframe(
                         duplicates.sort_values('ID')[['Name', 'ID', 'Module', 'Enabled', 'Source File']],
                         hide_index=True,
@@ -151,7 +157,7 @@ def main():
                             "Name": st.column_config.TextColumn("Name", width="medium"),
                             "ID": st.column_config.TextColumn("ID", width="small"),
                             "Module": st.column_config.TextColumn("Module", width="medium"),
-                            "Enabled": st.column_config.BooleanColumn("Enabled", width="small"),
+                            "Enabled": st.column_config.TextColumn("Enabled", width="small"),
                             "Source File": st.column_config.TextColumn("Source File", width="medium")
                         }
                     )

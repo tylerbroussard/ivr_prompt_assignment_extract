@@ -15,7 +15,7 @@ def load_campaign_data():
 def get_wav_files():
     """Get list of all WAV files in the current directory."""
     try:
-        return [f for f in os.listdir() if f.endswith('.wav')]
+        return [f for f in os.listdir() if f.lower().endswith('.wav')]
     except Exception as e:
         st.error(f"Error listing WAV files: {str(e)}")
         return []
@@ -106,7 +106,10 @@ def main():
                 
                 # Get IVR content
                 try:
-                    ivr_path = Path('IVRs') / ivr_name
+                    # Construct the full filename with extension
+                    ivr_filename = f"{ivr_name}.five9ivr"
+                    ivr_path = Path('IVRs') / ivr_filename
+                    
                     with open(ivr_path, 'r', encoding='utf-8') as f:
                         ivr_content = f.read()
                     

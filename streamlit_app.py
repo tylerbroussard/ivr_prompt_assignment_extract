@@ -7,10 +7,24 @@ from pathlib import Path
 def load_campaign_data():
     """Load campaign association data."""
     try:
-        return pd.read_csv("ivrcampaignassociation.csv")
+        df = pd.read_csv("ivrcampaignassociation.csv")
+        return df
     except Exception as e:
         st.error(f"Error loading campaign data: {str(e)}")
         return None
+
+def list_ivr_files():
+    """List all IVR files in the IVRs directory."""
+    try:
+        ivr_dir = Path('IVRs')
+        if ivr_dir.exists() and ivr_dir.is_dir():
+            return [f.name for f in ivr_dir.iterdir() if f.name.endswith('.five9ivr')]
+        else:
+            st.error("IVRs directory not found")
+            return []
+    except Exception as e:
+        st.error(f"Error listing IVR files: {str(e)}")
+        return []
 
 def get_wav_files():
     """Get list of all WAV files in the current directory."""
@@ -24,18 +38,6 @@ def extract_prompts(xml_content):
     """Extract prompts from XML content."""
     root = ET.fromstring(xml_content)
     prompts_list = []
-    
-    # First, find all announcement prompts and their enabled status
-    announcement_prompts = {}
-    for announcement in root.findall('.//announcements'):
-        enabled = announcement.find('enabled')
-        prompt = announcement.find('prompt')
-        if prompt is not None and enabled is not None:
-            prompt_id = prompt.find('id')
-            if prompt_id is not None:
-                announcement_prompts[prompt_id.text] = {
-                    'enabled': enabled.text.lower() == 'true'
-                }
     
     # Iterate through each module
     for module in root.findall('.//modules/*'):
@@ -75,16 +77,37 @@ def extract_prompts(xml_content):
             
     return unique_prompts
 
+def find_matching_ivr_file(ivr_name, available_files):
+    """Find the matching IVR file from available files."""
+    # Try exact match first
+    exact_match = f"{ivr_name}.five9ivr"
+    if exact_match in available_files:
+        return exact_match
+    
+    # Try case-insensitive match
+    for file in available_files:
+        if file.lower() == exact_match.lower():
+            return file
+    
+    return None
+
 def main():
     st.set_page_config(page_title="IVR Prompt Explorer", layout="wide")
     
     st.title("IVR Prompt Explorer")
     
+    # Debug information in expander
+    with st.expander("Debug Information"):
+        st.write("Available IVR Files:")
+        for ivr_file in list_ivr_files():
+            st.code(ivr_file)
+    
     # Load campaign data
     campaign_data = load_campaign_data()
     
     if campaign_data is not None:
-        # Get list of available wav files
+        # Get list of available files
+        available_ivr_files = list_ivr_files()
         wav_files = get_wav_files()
         
         # Create campaign dropdown
@@ -104,48 +127,51 @@ def main():
             for ivr_name in associated_ivrs:
                 st.subheader(f"Prompts for {ivr_name}")
                 
-                # Get IVR content
-                try:
-                    # Construct the full filename with extension
-                    ivr_filename = f"{ivr_name}.five9ivr"
-                    ivr_path = Path('IVRs') / ivr_filename
-                    
-                    with open(ivr_path, 'r', encoding='utf-8') as f:
-                        ivr_content = f.read()
-                    
-                    # Extract prompts
-                    prompts = extract_prompts(ivr_content)
-                    
-                    if prompts:
-                        # Create DataFrame
-                        df = pd.DataFrame(prompts)
+                # Find matching IVR file
+                ivr_filename = find_matching_ivr_file(ivr_name, available_ivr_files)
+                
+                if ivr_filename:
+                    try:
+                        ivr_path = Path('IVRs') / ivr_filename
+                        with open(ivr_path, 'r', encoding='utf-8') as f:
+                            ivr_content = f.read()
                         
-                        # Display prompts with audio player
-                        for index, row in df.iterrows():
-                            # Check if the audio file exists
-                            if row['AudioFile'] in wav_files:
-                                with st.expander(f"{row['Name']}"):
-                                    col1, col2 = st.columns([3, 1])
-                                    
-                                    with col1:
-                                        st.write(f"Module: {row['Module']}")
-                                        st.write(f"Audio File: {row['AudioFile']}")
-                                    
-                                    with col2:
-                                        # Load and display audio
-                                        try:
-                                            with open(row['AudioFile'], 'rb') as audio_file:
-                                                audio_bytes = audio_file.read()
-                                                st.audio(audio_bytes, format='audio/wav')
-                                        except Exception as e:
-                                            st.write("Audio not available")
+                        # Extract prompts
+                        prompts = extract_prompts(ivr_content)
                         
-                        # Show prompt count
-                        st.info(f"Found {len(prompts)} unique prompts in {ivr_name}")
-                    else:
-                        st.warning(f"No prompts found in {ivr_name}")
-                except Exception as e:
-                    st.error(f"Could not load IVR file {ivr_name}: {str(e)}")
+                        if prompts:
+                            # Create DataFrame
+                            df = pd.DataFrame(prompts)
+                            
+                            # Display prompts with audio player
+                            for index, row in df.iterrows():
+                                # Check if the audio file exists
+                                if row['AudioFile'] in wav_files:
+                                    with st.expander(f"{row['Name']}"):
+                                        col1, col2 = st.columns([3, 1])
+                                        
+                                        with col1:
+                                            st.write(f"Module: {row['Module']}")
+                                            st.write(f"Audio File: {row['AudioFile']}")
+                                        
+                                        with col2:
+                                            # Load and display audio
+                                            try:
+                                                with open(row['AudioFile'], 'rb') as audio_file:
+                                                    audio_bytes = audio_file.read()
+                                                    st.audio(audio_bytes, format='audio/wav')
+                                            except Exception as e:
+                                                st.write("Audio not available")
+                            
+                            # Show prompt count
+                            st.info(f"Found {len(prompts)} unique prompts in {ivr_name}")
+                        else:
+                            st.warning(f"No prompts found in {ivr_name}")
+                    except Exception as e:
+                        st.error(f"Could not load IVR file {ivr_name}: {str(e)}")
+                else:
+                    st.error(f"IVR file not found for {ivr_name}")
+                    st.write("Please check that the file exists in the IVRs directory and has a .five9ivr extension")
 
 if __name__ == "__main__":
     main()

@@ -94,7 +94,7 @@ def get_download_link(df, filename, text):
     """Generate a download link for the dataframe."""
     csv = df.to_csv(index=False)
     b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">📥 {text}</a>'
+    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}"> {text}</a>'
     return href
 
 def get_audio_html(wav_path):
@@ -104,12 +104,12 @@ def get_audio_html(wav_path):
             audio_bytes = f.read()
         audio_b64 = base64.b64encode(audio_bytes).decode()
         return f'<audio controls><source src="data:audio/wav;base64,{audio_b64}" type="audio/wav">Your browser does not support the audio element.</audio>'
-    return "❌ Audio file not found"
+    return " Audio file not found"
 
 def main():
-    st.set_page_config(page_title="Campaign Prompt Player", layout="wide")
+    st.set_page_config(page_title="IVR Prompt Extractor", layout="wide")
     
-    st.title("Campaign Prompt Player")
+    st.title("IVR Prompt Extractor")
     st.markdown("""
     Select a campaign to view and play its associated IVR prompts.
     """)
@@ -164,13 +164,7 @@ def main():
                 
                 with col1:
                     # Format the Status column
-                    df['Status'] = df.apply(
-                        lambda x: '✅ Active' if x['Enabled'] and x['Type'] == 'Announcement'
-                        else '❌ Disabled' if not x['Enabled'] and x['Type'] == 'Announcement'
-                        else '✅ In Use' if x['Enabled'] and x['Type'] == 'Play'
-                        else '❌ Not In Use',
-                        axis=1
-                    )
+                    df['Status'] = df['Enabled'].map({True: '✅ Active', False: '❌ Not Active'})
                     
                     # Display the DataFrame with formatted columns
                     display_df = df[['Name', 'Module', 'Type', 'Status']].copy()

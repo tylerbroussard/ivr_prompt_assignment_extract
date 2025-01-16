@@ -1,63 +1,24 @@
 import streamlit as st
 import pandas as pd
 import xml.etree.ElementTree as ET
-import base64
-import requests
-from github import Github
-from io import StringIO
+import os
+from pathlib import Path
 
-def load_campaign_data(github_token, repo_name):
-    """Load campaign association data from GitHub."""
-    g = Github(github_token)
-    repo = g.get_repo(repo_name)
-    
+def load_campaign_data():
+    """Load campaign association data."""
     try:
-        # Get campaign association CSV content
-        csv_content = repo.get_contents("ivrcampaignassociation.csv")
-        csv_data = pd.read_csv(StringIO(csv_content.decoded_content.decode()))
-        return csv_data
+        return pd.read_csv("ivrcampaignassociation.csv")
     except Exception as e:
         st.error(f"Error loading campaign data: {str(e)}")
         return None
 
-def get_ivr_content(github_token, repo_name, ivr_name):
-    """Fetch IVR XML content from GitHub."""
-    g = Github(github_token)
-    repo = g.get_repo(repo_name)
-    
+def get_wav_files():
+    """Get list of all WAV files in the current directory."""
     try:
-        # Look for the IVR file in the IVRs folder
-        ivr_path = f"IVRs/{ivr_name}"
-        ivr_content = repo.get_contents(ivr_path)
-        return ivr_content.decoded_content.decode()
+        return [f for f in os.listdir() if f.endswith('.wav')]
     except Exception as e:
-        st.error(f"Error loading IVR file: {str(e)}")
-        return None
-
-def get_available_prompts(github_token, repo_name):
-    """Get list of all available .wav files in the repo."""
-    g = Github(github_token)
-    repo = g.get_repo(repo_name)
-    
-    try:
-        contents = repo.get_contents("")  # Root directory
-        wav_files = [content.name for content in contents if content.name.endswith('.wav')]
-        return wav_files
-    except Exception as e:
-        st.error(f"Error loading prompt files: {str(e)}")
+        st.error(f"Error listing WAV files: {str(e)}")
         return []
-
-def get_prompt_audio(github_token, repo_name, prompt_name):
-    """Fetch prompt audio file from GitHub."""
-    g = Github(github_token)
-    repo = g.get_repo(repo_name)
-    
-    try:
-        audio_content = repo.get_contents(prompt_name)
-        return audio_content.decoded_content
-    except Exception as e:
-        st.warning(f"Audio file not found: {prompt_name}")
-        return None
 
 def extract_prompts(xml_content):
     """Extract prompts from XML content."""
@@ -101,7 +62,7 @@ def extract_prompts(xml_content):
                             'ID': prompt_id.text,
                             'Name': prompt_name.text,
                             'Module': module_name,
-                            'AudioFile': f"{prompt_name.text}.wav"  # Assuming the wav file matches the prompt name
+                            'AudioFile': f"{prompt_name.text}.wav"
                         })
     
     # Remove duplicates based on ID while keeping the first occurrence
@@ -119,16 +80,12 @@ def main():
     
     st.title("IVR Prompt Explorer")
     
-    # GitHub configuration
-    github_token = st.secrets["github"]["token"]
-    repo_name = st.secrets["github"]["repo"]
-    
     # Load campaign data
-    campaign_data = load_campaign_data(github_token, repo_name)
+    campaign_data = load_campaign_data()
     
     if campaign_data is not None:
-        # Get all available .wav files
-        available_prompts = get_available_prompts(github_token, repo_name)
+        # Get list of available wav files
+        wav_files = get_wav_files()
         
         # Create campaign dropdown
         campaigns = campaign_data['Campaign(s)'].unique()
@@ -148,9 +105,11 @@ def main():
                 st.subheader(f"Prompts for {ivr_name}")
                 
                 # Get IVR content
-                ivr_content = get_ivr_content(github_token, repo_name, ivr_name)
-                
-                if ivr_content:
+                try:
+                    ivr_path = Path('IVRs') / ivr_name
+                    with open(ivr_path, 'r', encoding='utf-8') as f:
+                        ivr_content = f.read()
+                    
                     # Extract prompts
                     prompts = extract_prompts(ivr_content)
                     
@@ -160,8 +119,8 @@ def main():
                         
                         # Display prompts with audio player
                         for index, row in df.iterrows():
-                            # Check if the audio file exists in the repository
-                            if row['AudioFile'] in available_prompts:
+                            # Check if the audio file exists
+                            if row['AudioFile'] in wav_files:
                                 with st.expander(f"{row['Name']}"):
                                     col1, col2 = st.columns([3, 1])
                                     
@@ -170,19 +129,20 @@ def main():
                                         st.write(f"Audio File: {row['AudioFile']}")
                                     
                                     with col2:
-                                        # Get and display audio
-                                        audio_data = get_prompt_audio(github_token, repo_name, row['AudioFile'])
-                                        if audio_data:
-                                            st.audio(audio_data, format='audio/wav')
-                                        else:
+                                        # Load and display audio
+                                        try:
+                                            with open(row['AudioFile'], 'rb') as audio_file:
+                                                audio_bytes = audio_file.read()
+                                                st.audio(audio_bytes, format='audio/wav')
+                                        except Exception as e:
                                             st.write("Audio not available")
-                            
+                        
                         # Show prompt count
                         st.info(f"Found {len(prompts)} unique prompts in {ivr_name}")
                     else:
                         st.warning(f"No prompts found in {ivr_name}")
-                else:
-                    st.error(f"Could not load IVR file: {ivr_name}")
+                except Exception as e:
+                    st.error(f"Could not load IVR file {ivr_name}: {str(e)}")
 
 if __name__ == "__main__":
     main()

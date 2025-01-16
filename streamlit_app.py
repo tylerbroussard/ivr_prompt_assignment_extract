@@ -99,18 +99,32 @@ def main():
     # Read IVR-campaign associations
     campaign_df = pd.read_csv('ivrcampaignassociation.csv')
     
-    # Create a mapping of campaigns to IVRs
+    # Get list of available IVR files
+    available_ivrs = [f.replace('.five9ivr', '') for f in os.listdir('IVRs') if f.endswith('.five9ivr')]
+    
+    # Create a mapping of campaigns to IVRs, only including available IVRs
     campaign_to_ivr = {}
+    unavailable_campaigns = []
     for _, row in campaign_df.iterrows():
         ivr = row['IVR Associated with Campaign(s)']
         campaigns = str(row['Campaign(s)']).split(',')
         for campaign in campaigns:
             campaign = campaign.strip()
             if campaign:  # Skip empty strings
-                campaign_to_ivr[campaign] = ivr
+                if ivr in available_ivrs:
+                    campaign_to_ivr[campaign] = ivr
+                else:
+                    unavailable_campaigns.append((campaign, ivr))
 
     # Get unique campaigns for dropdown
     campaigns = sorted(list(campaign_to_ivr.keys()))
+    
+    # Display warning about unavailable IVRs if any
+    if unavailable_campaigns:
+        st.warning("Some campaigns are mapped to IVR files that are not available in the IVRs directory:")
+        for campaign, ivr in unavailable_campaigns:
+            st.write(f"- Campaign '{campaign}' -> IVR '{ivr}'")
+        st.write("These campaigns will not be shown in the dropdown.")
     
     # Campaign selector
     selected_campaign = st.selectbox(

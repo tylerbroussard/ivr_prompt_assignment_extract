@@ -7,6 +7,9 @@ import base64
 import os
 from pathlib import Path
 
+# Get the absolute path to the app directory
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
 def extract_prompts(xml_content):
     """Extract prompts from XML content."""
     root = ET.fromstring(xml_content)
@@ -97,7 +100,10 @@ def get_download_link(df, filename, text):
 def get_audio_html(wav_path):
     """Generate HTML for audio player if WAV file exists."""
     if os.path.exists(wav_path):
-        return f'<audio controls><source src="data:audio/wav;base64,{base64.b64encode(open(wav_path, "rb").read()).decode()}" type="audio/wav">Your browser does not support the audio element.</audio>'
+        with open(wav_path, "rb") as f:
+            audio_bytes = f.read()
+        audio_b64 = base64.b64encode(audio_bytes).decode()
+        return f'<audio controls><source src="data:audio/wav;base64,{audio_b64}" type="audio/wav">Your browser does not support the audio element.</audio>'
     return "❌ Audio file not found"
 
 def main():
@@ -109,10 +115,11 @@ def main():
     """)
 
     # Read campaign-IVR associations
-    campaign_df = pd.read_csv('campaignivrs.csv')
+    campaign_df = pd.read_csv(os.path.join(APP_DIR, 'campaignivrs.csv'))
     
     # Get list of available IVR files
-    available_ivrs = set(os.listdir('IVRs'))
+    ivr_dir = os.path.join(APP_DIR, 'IVRs')
+    available_ivrs = set(os.listdir(ivr_dir))
     
     # Filter campaigns to only those with available IVR files
     available_campaigns = []
@@ -135,7 +142,7 @@ def main():
     if selected_campaign:
         # Get associated IVR file
         ivr_file = campaign_df[campaign_df['Campaign'] == selected_campaign]['IVR'].iloc[0]
-        ivr_path = os.path.join('IVRs', ivr_file)
+        ivr_path = os.path.join(ivr_dir, ivr_file)
         
         try:
             # Read and process the IVR file
@@ -176,7 +183,7 @@ def main():
                 # Display audio players for each prompt
                 st.write("### Play Prompts")
                 for _, prompt in df.iterrows():
-                    wav_path = prompt['WavFile']
+                    wav_path = os.path.join(APP_DIR, prompt['WavFile'])
                     if os.path.exists(wav_path):
                         st.write(f"**{prompt['Name']}** ({prompt['Status']})")
                         st.markdown(get_audio_html(wav_path), unsafe_allow_html=True)

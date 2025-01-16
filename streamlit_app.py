@@ -1,9 +1,63 @@
 import streamlit as st
 import pandas as pd
 import xml.etree.ElementTree as ET
-import re
-from io import StringIO
 import base64
+import requests
+from github import Github
+from io import StringIO
+
+def load_campaign_data(github_token, repo_name):
+    """Load campaign association data from GitHub."""
+    g = Github(github_token)
+    repo = g.get_repo(repo_name)
+    
+    try:
+        # Get campaign association CSV content
+        csv_content = repo.get_contents("ivrcampaignassociation.csv")
+        csv_data = pd.read_csv(StringIO(csv_content.decoded_content.decode()))
+        return csv_data
+    except Exception as e:
+        st.error(f"Error loading campaign data: {str(e)}")
+        return None
+
+def get_ivr_content(github_token, repo_name, ivr_name):
+    """Fetch IVR XML content from GitHub."""
+    g = Github(github_token)
+    repo = g.get_repo(repo_name)
+    
+    try:
+        # Look for the IVR file in the IVRs folder
+        ivr_path = f"IVRs/{ivr_name}"
+        ivr_content = repo.get_contents(ivr_path)
+        return ivr_content.decoded_content.decode()
+    except Exception as e:
+        st.error(f"Error loading IVR file: {str(e)}")
+        return None
+
+def get_available_prompts(github_token, repo_name):
+    """Get list of all available .wav files in the repo."""
+    g = Github(github_token)
+    repo = g.get_repo(repo_name)
+    
+    try:
+        contents = repo.get_contents("")  # Root directory
+        wav_files = [content.name for content in contents if content.name.endswith('.wav')]
+        return wav_files
+    except Exception as e:
+        st.error(f"Error loading prompt files: {str(e)}")
+        return []
+
+def get_prompt_audio(github_token, repo_name, prompt_name):
+    """Fetch prompt audio file from GitHub."""
+    g = Github(github_token)
+    repo = g.get_repo(repo_name)
+    
+    try:
+        audio_content = repo.get_contents(prompt_name)
+        return audio_content.decoded_content
+    except Exception as e:
+        st.warning(f"Audio file not found: {prompt_name}")
+        return None
 
 def extract_prompts(xml_content):
     """Extract prompts from XML content."""
@@ -26,20 +80,6 @@ def extract_prompts(xml_content):
     for module in root.findall('.//modules/*'):
         module_name = module.find('moduleName')
         
-        # Check if module is disconnected
-        is_disconnected = False
-        module_id = None
-        if module.find('moduleId') is not None:
-            module_id = module.find('moduleId').text
-            # If all connection IDs are the same as the module ID, it's disconnected
-            all_connections = []
-            for tag in ['ascendants', 'exceptionalDescendant', 'singleDescendant']:
-                connections = module.findall(f'./{tag}')
-                all_connections.extend([conn.text for conn in connections])
-            
-            if all_connections and all(conn == module_id for conn in all_connections):
-                is_disconnected = True
-        
         if module_name is not None:
             module_name = module_name.text
             
@@ -57,172 +97,92 @@ def extract_prompts(xml_content):
                     prompt_id = prompt_elem.find('id')
                     prompt_name = prompt_elem.find('name')
                     if prompt_id is not None and prompt_name is not None:
-                        # Check if this prompt has announcement settings
-                        enabled = announcement_prompts.get(prompt_id.text, {}).get('enabled', None)
-                        # If not an announcement prompt, mark as In Use/Not In Use
-                        if enabled is None:
-                            enabled = not is_disconnected
                         prompts_list.append({
                             'ID': prompt_id.text,
                             'Name': prompt_name.text,
                             'Module': module_name,
-                            'Type': 'Announcement' if prompt_id.text in announcement_prompts else 'Play',
-                            'Enabled': enabled
+                            'AudioFile': f"{prompt_name.text}.wav"  # Assuming the wav file matches the prompt name
                         })
     
-    # Sort by name and remove duplicates based on ID
+    # Remove duplicates based on ID while keeping the first occurrence
     unique_prompts = []
     seen_ids = set()
-    for prompt in sorted(prompts_list, key=lambda x: x['Name']):
+    for prompt in prompts_list:
         if prompt['ID'] not in seen_ids:
             unique_prompts.append(prompt)
             seen_ids.add(prompt['ID'])
             
     return unique_prompts
 
-def get_download_link(df, filename, text):
-    """Generate a download link for the dataframe."""
-    csv = df.to_csv(index=False)
-    b64 = base64.b64encode(csv.encode()).decode()
-    href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">📥 {text}</a>'
-    return href
-
 def main():
-    st.set_page_config(page_title="IVR Prompt Extractor", layout="wide")
+    st.set_page_config(page_title="IVR Prompt Explorer", layout="wide")
     
-    st.title("IVR Prompt Extractor")
-    st.markdown("""
-    This app extracts prompts from IVR XML scripts. Upload one or more XML files to begin.
-    """)
-
-    # File uploader
-    uploaded_files = st.file_uploader(
-        "Upload Five9 IVR or XML files", 
-        type=['five9ivr', 'xml'], 
-        accept_multiple_files=True,
-        help="You can upload multiple XML files at once"
-    )
-
-    if uploaded_files:
-        all_results = []
+    st.title("IVR Prompt Explorer")
+    
+    # GitHub configuration
+    github_token = st.secrets["github"]["token"]
+    repo_name = st.secrets["github"]["repo"]
+    
+    # Load campaign data
+    campaign_data = load_campaign_data(github_token, repo_name)
+    
+    if campaign_data is not None:
+        # Get all available .wav files
+        available_prompts = get_available_prompts(github_token, repo_name)
         
-        # Process each file
-        for uploaded_file in uploaded_files:
-            st.subheader(f"Results for: {uploaded_file.name}")
-            
-            try:
-                # Read file content
-                content = uploaded_file.read().decode('utf-8')
-                
-                # Extract prompts
-                prompts = extract_prompts(content)
-                
-                if prompts:
-                    # Create DataFrame
-                    df = pd.DataFrame(prompts)
-                    
-                    # Add filename column
-                    df['Source File'] = uploaded_file.name
-                    
-                    # Add to all results
-                    all_results.append(df)
-                    
-                    # Display results for this file
-                    # Convert boolean to readable format
-                    df['Status'] = df.apply(lambda x: 
-                        '✅ Enabled' if x['Enabled'] and x['Type'] == 'Announcement' 
-                        else '❌ Disabled' if not x['Enabled'] and x['Type'] == 'Announcement'
-                        else '✅ In Use' if x['Enabled'] and x['Type'] == 'Play'
-                        else '❌ Not In Use',
-                        axis=1
-                    )
-                    
-                    st.dataframe(
-                        df[['Name', 'ID', 'Module', 'Type', 'Status']],
-                        hide_index=True,
-                        use_container_width=True,
-                        column_config={
-                            "Name": st.column_config.TextColumn("Name", width="medium"),
-                            "ID": st.column_config.TextColumn("ID", width="small"),
-                            "Module": st.column_config.TextColumn("Module", width="medium"),
-                            "Type": st.column_config.TextColumn("Type", width="small"),
-                            "Status": st.column_config.TextColumn("Status", width="small")
-                        }
-                    )
-                    
-                    # Show prompt count
-                    st.info(f"Found {len(prompts)} unique prompts in {uploaded_file.name}")
-                    
-                else:
-                    st.warning(f"No prompts found in {uploaded_file.name}")
-                
-                st.divider()
-                
-            except Exception as e:
-                st.error(f"Error processing {uploaded_file.name}: {str(e)}")
+        # Create campaign dropdown
+        campaigns = campaign_data['Campaign(s)'].unique()
+        selected_campaign = st.selectbox(
+            "Select Campaign",
+            options=campaigns,
+            help="Choose a campaign to view associated IVR prompts"
+        )
         
-        # If we have results, offer combined analysis
-        if all_results:
-            st.header("Combined Analysis")
+        if selected_campaign:
+            # Get associated IVR(s)
+            associated_ivrs = campaign_data[
+                campaign_data['Campaign(s)'] == selected_campaign
+            ]['IVR Associated with Campaign(s)'].tolist()
             
-            # Combine all results
-            combined_df = pd.concat(all_results, ignore_index=True)
-            
-            # Analysis tabs
-            tab1, tab2, tab3 = st.tabs(["Summary", "Duplicate Analysis", "Export"])
-            
-            with tab1:
-                st.subheader("Summary Statistics")
-                col1, col2, col3 = st.columns(3)
+            for ivr_name in associated_ivrs:
+                st.subheader(f"Prompts for {ivr_name}")
                 
-                with col1:
-                    st.metric("Total Files", len(uploaded_files))
-                with col2:
-                    st.metric("Total Prompts", len(combined_df))
-                with col3:
-                    st.metric("Unique Prompt IDs", combined_df['ID'].nunique())
-            
-            with tab2:
-                st.subheader("Duplicate Prompt Analysis")
+                # Get IVR content
+                ivr_content = get_ivr_content(github_token, repo_name, ivr_name)
                 
-                # Find duplicates based on ID
-                duplicates = combined_df[combined_df.duplicated(subset=['ID'], keep=False)]
-                if not duplicates.empty:
-                    # Convert boolean/N/A to readable format for duplicates display
-                    duplicates['Enabled'] = duplicates['Enabled'].map({True: '✅', False: '❌', 'N/A': '—'})
+                if ivr_content:
+                    # Extract prompts
+                    prompts = extract_prompts(ivr_content)
                     
-                    st.dataframe(
-                        duplicates.sort_values('ID')[['Name', 'ID', 'Module', 'Enabled', 'Source File']],
-                        hide_index=True,
-                        use_container_width=True,
-                        column_config={
-                            "Name": st.column_config.TextColumn("Name", width="medium"),
-                            "ID": st.column_config.TextColumn("ID", width="small"),
-                            "Module": st.column_config.TextColumn("Module", width="medium"),
-                            "Enabled": st.column_config.TextColumn("Enabled", width="small"),
-                            "Source File": st.column_config.TextColumn("Source File", width="medium")
-                        }
-                    )
-                    st.warning(f"Found {len(duplicates)//2} duplicate prompt IDs across files")
+                    if prompts:
+                        # Create DataFrame
+                        df = pd.DataFrame(prompts)
+                        
+                        # Display prompts with audio player
+                        for index, row in df.iterrows():
+                            # Check if the audio file exists in the repository
+                            if row['AudioFile'] in available_prompts:
+                                with st.expander(f"{row['Name']}"):
+                                    col1, col2 = st.columns([3, 1])
+                                    
+                                    with col1:
+                                        st.write(f"Module: {row['Module']}")
+                                        st.write(f"Audio File: {row['AudioFile']}")
+                                    
+                                    with col2:
+                                        # Get and display audio
+                                        audio_data = get_prompt_audio(github_token, repo_name, row['AudioFile'])
+                                        if audio_data:
+                                            st.audio(audio_data, format='audio/wav')
+                                        else:
+                                            st.write("Audio not available")
+                            
+                        # Show prompt count
+                        st.info(f"Found {len(prompts)} unique prompts in {ivr_name}")
+                    else:
+                        st.warning(f"No prompts found in {ivr_name}")
                 else:
-                    st.success("No duplicate prompt IDs found across files")
-            
-            with tab3:
-                st.subheader("Export Options")
-                
-                # Export individual file results
-                for df in all_results:
-                    filename = f"prompts_{df['Source File'].iloc[0]}.csv"
-                    st.markdown(
-                        get_download_link(df, filename, f"Download results for {df['Source File'].iloc[0]}"),
-                        unsafe_allow_html=True
-                    )
-                
-                # Export combined results
-                st.markdown(
-                    get_download_link(combined_df, "all_prompts.csv", "Download combined results"),
-                    unsafe_allow_html=True
-                )
+                    st.error(f"Could not load IVR file: {ivr_name}")
 
 if __name__ == "__main__":
     main()

@@ -107,9 +107,9 @@ def get_audio_html(wav_path):
     return "❌ Audio file not found"
 
 def main():
-    st.set_page_config(page_title="IVR Prompt Extractor", layout="wide")
+    st.set_page_config(page_title="Campaign Prompt Player", layout="wide")
     
-    st.title("IVR Prompt Extractor")
+    st.title("Campaign Prompt Player")
     st.markdown("""
     Select a campaign to view and play its associated IVR prompts.
     """)
